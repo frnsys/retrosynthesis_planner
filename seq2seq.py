@@ -1,8 +1,17 @@
+import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import rnn, seq2seq, layers
 from tensorflow.contrib.framework import nest
 
+START = 0
 END = 1
+
+
+def pad_arrays(arrs, pad_value=END):
+    max_len = np.max([len(a) for a in arrs])
+    return np.asarray([np.pad(a, (0, max_len - len(a)),
+                              'constant', constant_values=pad_value) for a in arrs])
+
 
 class Seq2Seq:
     def __init__(self, vocab_size, batch_size=16, learning_rate=0.001,
@@ -23,14 +32,14 @@ class Seq2Seq:
         if dropout:
             self.keep_prob = tf.placeholder(tf.float32, shape=None)
 
-        self.sequence_length = tf.placeholder(tf.int32, shape=(None,)) # TODO
         self.X = tf.placeholder(tf.int32, shape=(None, None))
         self.y = tf.placeholder(tf.int32, shape=(None, None))
+        self.sequence_length = tf.reduce_sum(tf.to_int32(tf.not_equal(self.X, END)), 1)
 
         # Assemble the model graph
         encoder_outputs, encoder_final_state = self._make_encoder()
         decoder_cell, decoder_initial_state = self._make_decoder(encoder_outputs, encoder_final_state)
-        self.loss_op, self.train_op = self._make_train(decoder_cell, decoder_initial_state)
+        self.loss_op, self.train_op, self.acc_op = self._make_train(decoder_cell, decoder_initial_state)
         tvars = tf.trainable_variables()
         decoder_cell, decoder_initial_state = self._make_decoder(encoder_outputs, encoder_final_state, beam_search=True, reuse=True)
         self.pred_op = self._make_predict(decoder_cell, decoder_initial_state)
@@ -133,7 +142,7 @@ class Seq2Seq:
             scope='embed', reuse=True)
 
         # Project to correct dimensions
-        # proj = tf.layers.Dense(self.vocab_size, name='output_projection')
+        out_proj = tf.layers.Dense(self.vocab_size, name='output_projection')
 
         # Prepare the decoder with the attention cell
         with tf.variable_scope('decode'):
@@ -141,10 +150,11 @@ class Seq2Seq:
             helper = seq2seq.TrainingHelper(inputs, output_lengths)
             decoder = seq2seq.BasicDecoder(
                 cell=decoder_cell, helper=helper,
-                initial_state=decoder_initial_state)
-                # output_layer=proj)
+                initial_state=decoder_initial_state,
+                output_layer=out_proj)
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
                 decoder=decoder, impute_finished=True)
+            logits = final_outputs.rnn_output
 
         # Prioritize examples that the model was wrong on,
         # by setting weight=1 to any example where the prediction was not 1,
@@ -152,10 +162,11 @@ class Seq2Seq:
         weights = tf.to_float(tf.not_equal(y[:, :-1], 1))
 
         # Training and loss ops
-        loss_op = seq2seq.sequence_loss(
-            final_outputs.rnn_output, self.y, weights=weights)
+        loss_op = seq2seq.sequence_loss(logits, self.y, weights=weights)
         train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(loss_op)
-        return loss_op, train_op
+        pred_idx = tf.to_int32(tf.argmax(logits, 2))
+        accuracy_op = tf.reduce_mean(tf.cast(tf.equal(pred_idx, self.y), tf.float32), name='acc')
+        return loss_op, train_op, accuracy_op
 
     def _make_predict(self, decoder_cell, decoder_initial_state):
         # Access embeddings directly
@@ -178,3 +189,97 @@ class Seq2Seq:
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
                 decoder=decoder, impute_finished=False)
         return final_outputs
+
+if __name__ == '__main__':
+    import os
+    import random
+    from tqdm import tqdm, trange
+
+    # Load and save vocab
+    vocab = ['<S>', '</S>']
+    with open('data/vocab.dat', 'r') as f:
+        for line in tqdm(f, desc='vocab'):
+            tok, _ = line.strip().split('\t')
+            vocab.append(tok)
+    vocab2id = {v: i for i, v in enumerate(vocab)}
+    with open('data/vocab.idx', 'w') as f:
+        f.write('\n'.join(vocab))
+
+    # Load reactions
+    X, y = [], []
+    with open('data/reactions.dat', 'r') as f:
+        for line in tqdm(f, desc='reactions'):
+            source_toks, target_toks = line.strip().split('\t')
+            source_toks = source_toks.split()
+            target_toks = target_toks.split()
+            source_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in source_toks] + [END]
+            target_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in target_toks] + [END]
+            X.append(source_doc)
+            y.append(target_doc)
+
+    print('Preparing model...')
+    batch_size = 16
+    model = Seq2Seq(vocab_size=len(vocab),
+                    batch_size=batch_size, learning_rate=0.0001,
+                    embed_dim=100, hidden_size=128, depth=1,
+                    beam_width=10, residual=True, dropout=True)
+    # model = Seq2Seq(vocab_size=len(vocab),
+    #                 batch_size=batch_size, learning_rate=0.35,
+    #                 embed_dim=256, hidden_size=1024, depth=2,
+    #                 beam_width=10, residual=True, dropout=True)
+
+
+    sess = tf.Session()
+    init = tf.global_variables_initializer()
+    sess.run(init)
+
+    save_path = 'model'
+    ckpt_path = os.path.join(save_path, 'model.ckpt')
+    saver = tf.train.Saver()
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
+    else:
+        saver.restore(sess, ckpt_path)
+
+    print('Training...')
+    losses = []
+    accuracy = []
+    epochs = 10
+    it = trange(epochs)
+    n_steps = int(np.ceil(len(X)/batch_size))
+    for e in it:
+        # Shuffle
+        # For numpy arrays:
+        # p = np.random.permutation(len(X))
+        # X, y = X[p], y[p]
+        # For python lists:
+        xy = list(zip(X, y))
+        random.shuffle(xy)
+        X, y = zip(*xy)
+
+        # Iterate batches
+        eit = trange(n_steps)
+        for i in eit:
+            l = i*batch_size
+            u = l + batch_size
+            X_batch, y_batch = pad_arrays(X[l:u]), pad_arrays(y[l:u])
+            _, err, acc = sess.run(
+                [model.train_op, model.loss_op, model.acc_op],
+                feed_dict={
+                    model.keep_prob: 0.6,
+                    model.X: X_batch,
+                    model.y: y_batch
+                }
+            )
+            losses.append(err)
+            accuracy.append(acc)
+            eit.set_postfix(
+                loss=err,
+                acc=acc,
+                u_loss=np.mean(losses[-10:]) if losses else None,
+                u_acc=np.mean(accuracy[-10:]) if accuracy else None)
+        it.set_postfix(
+            loss=np.mean(losses[-10:]),
+            acc=np.mean(accuracy[-10:]))
+
+        saver.save(sess, ckpt_path)
