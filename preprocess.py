@@ -1,3 +1,7 @@
+"""
+Preprocess reaction data as described in [2].
+"""
+
 import re
 from tqdm import tqdm
 from rdkit.Chem import AllChem
