@@ -214,8 +214,11 @@ if __name__ == '__main__':
             target_toks = target_toks.split()
             source_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in source_toks] + [END]
             target_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in target_toks] + [END]
-            X.append(source_doc)
-            y.append(target_doc)
+
+            # Since this is for retrosynthesis,
+            # we want predict reactants (sources) from products (targets)
+            X.append(target_doc)
+            y.append(source_doc)
 
     print('Preparing model...')
     batch_size = 16
