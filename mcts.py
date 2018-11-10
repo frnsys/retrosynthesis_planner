@@ -13,13 +13,13 @@ class Node:
         self.is_terminal = is_terminal
 
     @property
-    def score(self):
+    def value(self):
         """UCB1"""
         return self.reward/self.n_visits + \
             EXPLORE_PARAM*math.sqrt(math.ln(self.parent.n_visits)/self.n_visits)
 
     def best_child(self):
-        return max(self.children, key=lambda n: n.score)
+        return max(self.children, key=lambda n: n.value)
 
 
 def mcts(root, expansion_policy, rollout_policy, iterations=2000, max_depth=200):
