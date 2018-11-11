@@ -108,7 +108,7 @@ if __name__ == '__main__':
     with open('data/vocab.dat', 'w') as f:
         lines = []
         for vocab, count in sorted(vocab.items(), key=lambda kv: kv[1], reverse=True):
-            lines.append('{}\t{}'.format(vocab, id))
+            lines.append('{}\t{}'.format(vocab, count))
         f.write('\n'.join(lines))
 
     with open('data/reactions.dat', 'w') as f:
