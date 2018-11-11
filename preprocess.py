@@ -66,47 +66,48 @@ def process(smarts):
 def clean(line): return line.strip().split()[0]
 
 
-seen = set()
-reactions = []
-vocab = defaultdict(int)
-with open('data/reactions.rsmi', 'r') as f:
-    it = tqdm(map(process, map(clean, f)))
-    for toks in it:
-        if toks is None: continue
-        h = md5('_'.join(''.join(ts) for ts in toks).encode('utf8')).hexdigest()
-        if h in seen:
-            continue
-        else:
-            seen.add(h)
-        reactions.append(toks)
-        for ts in toks:
-            for t in ts:
-                vocab[t] += 1
-        it.set_postfix(
-            reactions=len(reactions),
-            vocab=len(vocab),
-            reagents=len(reagents))
+if __name__ == '__main__':
+    seen = set()
+    reactions = []
+    vocab = defaultdict(int)
+    with open('data/reactions.rsmi', 'r') as f:
+        it = tqdm(map(process, map(clean, f)))
+        for toks in it:
+            if toks is None: continue
+            h = md5('_'.join(''.join(ts) for ts in toks).encode('utf8')).hexdigest()
+            if h in seen:
+                continue
+            else:
+                seen.add(h)
+            reactions.append(toks)
+            for ts in toks:
+                for t in ts:
+                    vocab[t] += 1
+            it.set_postfix(
+                reactions=len(reactions),
+                vocab=len(vocab),
+                reagents=len(reagents))
 
-print('Reagents:', len(reagents))
-print('Reactions:', len(reactions))
-print('Vocab size:', len(vocab))
+    print('Reagents:', len(reagents))
+    print('Reactions:', len(reactions))
+    print('Vocab size:', len(vocab))
 
-with open('data/reagents.dat', 'w') as f:
-    lines = []
-    for reagent, id in sorted(reagents.items(), key=lambda kv: kv[1]):
-        lines.append('{}\t{}'.format(reagent, id))
-    f.write('\n'.join(lines))
+    with open('data/reagents.dat', 'w') as f:
+        lines = []
+        for reagent, id in sorted(reagents.items(), key=lambda kv: kv[1]):
+            lines.append('{}\t{}'.format(reagent, id))
+        f.write('\n'.join(lines))
 
-with open('data/vocab.dat', 'w') as f:
-    lines = []
-    for vocab, count in sorted(vocab.items(), key=lambda kv: kv[1], reverse=True):
-        lines.append('{}\t{}'.format(vocab, id))
-    f.write('\n'.join(lines))
+    with open('data/vocab.dat', 'w') as f:
+        lines = []
+        for vocab, count in sorted(vocab.items(), key=lambda kv: kv[1], reverse=True):
+            lines.append('{}\t{}'.format(vocab, id))
+        f.write('\n'.join(lines))
 
-with open('data/reactions.dat', 'w') as f:
-    lines = []
-    for source_toks, target_toks in reactions:
-        lines.append('{}\t{}'.format(
-            ' '.join(source_toks),
-            ' '.join(target_toks)))
-    f.write('\n'.join(lines))
+    with open('data/reactions.dat', 'w') as f:
+        lines = []
+        for source_toks, target_toks in reactions:
+            lines.append('{}\t{}'.format(
+                ' '.join(source_toks),
+                ' '.join(target_toks)))
+        f.write('\n'.join(lines))

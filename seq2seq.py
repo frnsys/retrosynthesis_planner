@@ -8,6 +8,8 @@ END = 1
 
 
 def pad_arrays(arrs, pad_value=END):
+    """Pad list of ragged arrays with `pad_value` so
+    they all have the same shape"""
     max_len = np.max([len(a) for a in arrs])
     return np.asarray([np.pad(a, (0, max_len - len(a)),
                               'constant', constant_values=pad_value) for a in arrs])
@@ -51,6 +53,7 @@ class Seq2Seq:
                 print(v)
 
     def _make_cell(self, hidden_size=None):
+        """Create a single RNN cell"""
         cell = self.cell_type(hidden_size or self.hidden_size)
         if self.dropout:
             cell = rnn.DropoutWrapper(cell, self.keep_prob)
@@ -59,6 +62,7 @@ class Seq2Seq:
         return cell
 
     def _make_encoder(self):
+        """Create the encoder"""
         inputs = layers.embed_sequence(
             self.X,
             vocab_size=self.vocab_size,
@@ -66,6 +70,10 @@ class Seq2Seq:
             scope='embed')
 
         # Project to correct dimensions
+        # Halve the dimensions so that
+        # the bidirectional output has the correct size
+        # (because we concat the forward and backward outputs,
+        # the output size is 2*size)
         inputs = tf.layers.dense(inputs, self.hidden_size//2)
 
         cell_fw = rnn.MultiRNNCell([
@@ -81,7 +89,7 @@ class Seq2Seq:
         # Concat forward and backward outputs
         encoder_outputs = tf.concat(encoder_outputs, 2)
 
-        # Concat forward and backward states
+        # Concat forward and backward layer states
         encoder_fw_states, encoder_bw_states = encoder_final_state
         encoder_final_state = []
         for fw, bw in zip(encoder_fw_states, encoder_bw_states):
@@ -91,10 +99,13 @@ class Seq2Seq:
         return encoder_outputs, encoder_final_state
 
     def _make_decoder(self, encoder_outputs, encoder_final_state, beam_search=False, reuse=False):
+        """Create decoder"""
         with tf.variable_scope('decode', reuse=reuse):
+            # Create decoder cells
             cells = [self._make_cell() for _ in range(self.depth)]
 
             if beam_search:
+                # Tile inputs as needed for beam search
                 encoder_outputs = seq2seq.tile_batch(
                     encoder_outputs, multiplier=self.beam_width)
                 encoder_final_state = nest.map_structure(
@@ -120,12 +131,17 @@ class Seq2Seq:
             # Copy encoder final state as decoder initial state
             decoder_initial_state = [s for s in encoder_final_state]
 
+            # Set last initial state to be AttentionWrapperState
             batch_size = self.batch_size
             if beam_search: batch_size *= self.beam_width
             decoder_initial_state[-1] = cells[-1].zero_state(
                 dtype=tf.float32, batch_size=batch_size)
 
+            # Wrap up the cells
             cell = rnn.MultiRNNCell(cells)
+
+            # Return initial state as a tuple
+            # (required by tensorflow)
             return cell, tuple(decoder_initial_state)
 
     def _make_train(self, decoder_cell, decoder_initial_state):
@@ -141,12 +157,12 @@ class Seq2Seq:
             embed_dim=self.embed_dim,
             scope='embed', reuse=True)
 
-        # Project to correct dimensions
-        out_proj = tf.layers.Dense(self.vocab_size, name='output_projection')
-
         # Prepare the decoder with the attention cell
         with tf.variable_scope('decode'):
+            # Project to correct dimensions
+            out_proj = tf.layers.Dense(self.vocab_size, name='output_proj')
             inputs = tf.layers.dense(inputs, self.hidden_size, name='input_proj')
+
             helper = seq2seq.TrainingHelper(inputs, output_lengths)
             decoder = seq2seq.BasicDecoder(
                 cell=decoder_cell, helper=helper,
@@ -173,17 +189,23 @@ class Seq2Seq:
         with tf.variable_scope('embed', reuse=True):
             embeddings = tf.get_variable('embeddings')
 
+        # Assume 0 is the START token
         start_tokens = tf.zeros((self.batch_size,), dtype=tf.int32)
 
+        # For predictions, we use beam search to return multiple results
         with tf.variable_scope('decode', reuse=True):
+            # Project to correct dimensions
+            out_proj = tf.layers.Dense(self.vocab_size, name='output_proj')
             embeddings = tf.layers.dense(embeddings, self.hidden_size, name='input_proj')
+
             decoder = seq2seq.BeamSearchDecoder(
                 cell=decoder_cell,
                 embedding=embeddings,
                 start_tokens=start_tokens,
                 end_token=END,
                 initial_state=decoder_initial_state,
-                beam_width=self.beam_width
+                beam_width=self.beam_width,
+                output_layer=out_proj
             )
 
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
