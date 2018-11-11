@@ -222,14 +222,14 @@ if __name__ == '__main__':
 
     print('Preparing model...')
     batch_size = 16
+    # model = Seq2Seq(vocab_size=len(vocab),
+    #                 batch_size=batch_size, learning_rate=0.0001,
+    #                 embed_dim=100, hidden_size=128, depth=1,
+    #                 beam_width=10, residual=True, dropout=True)
     model = Seq2Seq(vocab_size=len(vocab),
                     batch_size=batch_size, learning_rate=0.0001,
-                    embed_dim=100, hidden_size=128, depth=1,
+                    embed_dim=256, hidden_size=1024, depth=2,
                     beam_width=10, residual=True, dropout=True)
-    # model = Seq2Seq(vocab_size=len(vocab),
-    #                 batch_size=batch_size, learning_rate=0.35,
-    #                 embed_dim=256, hidden_size=1024, depth=2,
-    #                 beam_width=10, residual=True, dropout=True)
 
 
     sess = tf.Session()
@@ -247,7 +247,7 @@ if __name__ == '__main__':
     print('Training...')
     losses = []
     accuracy = []
-    epochs = 10
+    epochs = 3
     it = trange(epochs)
     n_steps = int(np.ceil(len(X)/batch_size))
     for e in it:
