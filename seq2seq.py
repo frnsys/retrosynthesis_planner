@@ -73,10 +73,9 @@ class Seq2Seq:
             scope='embed')
 
         # Project to correct dimensions
-        # Halve the dimensions so that
-        # the bidirectional output has the correct size
-        # (because we concat the forward and backward outputs,
-        # the output size is 2*size)
+        # b/c the bidirectional RNN's forward and backward
+        # outputs are concatenated, the size will be 2x,
+        # so halve the hidden sizes here to compensate
         inputs = tf.layers.dense(inputs, self.hidden_size//2)
 
         cell_fw = rnn.MultiRNNCell([
@@ -262,14 +261,14 @@ if __name__ == '__main__':
             y.append(source_doc)
 
     print('Preparing model...')
-    batch_size = 16
+    batch_size = 32
     # model = Seq2Seq(vocab_size=len(vocab),
     #                 batch_size=batch_size, learning_rate=0.0001,
     #                 embed_dim=100, hidden_size=128, depth=1,
     #                 beam_width=10, residual=True, dropout=True)
     model = Seq2Seq(vocab_size=len(vocab),
-                    batch_size=batch_size, learning_rate=0.0002,
-                    embed_dim=400, hidden_size=1024, depth=2,
+                    batch_size=batch_size, learning_rate=0.0001,
+                    embed_dim=1024, hidden_size=2048, depth=2,
                     beam_width=10, residual=True, dropout=True)
 
 
@@ -314,7 +313,7 @@ if __name__ == '__main__':
             _, err, acc = sess.run(
                 [model.train_op, model.loss_op, model.acc_op],
                 feed_dict={
-                    model.keep_prob: 0.6,
+                    model.keep_prob: 0.5,
                     model.X: X_batch,
                     model.y: y_batch
                 }
