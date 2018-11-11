@@ -307,6 +307,10 @@ if __name__ == '__main__':
             l = i*batch_size
             u = l + batch_size
             X_batch, y_batch = pad_arrays(X[l:u]), pad_arrays(y[l:u])
+
+            # Drop last batch if it is malformed
+            if X_batch.shape[0] < batch_size: continue
+
             _, err, acc = sess.run(
                 [model.train_op, model.loss_op, model.acc_op],
                 feed_dict={
