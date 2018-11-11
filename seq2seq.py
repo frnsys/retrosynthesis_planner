@@ -16,7 +16,8 @@ def pad_arrays(arrs, pad_value=END):
 
 
 class Seq2Seq:
-    def __init__(self, vocab_size, batch_size=16, learning_rate=0.001,
+    def __init__(self, vocab_size,
+                 batch_size=16, learning_rate=0.001, max_grad_norm=5.,
                  embed_dim=100, beam_width=10,
                  cell_type=rnn.LSTMCell, hidden_size=512, depth=2,
                  residual=True, dropout=True):
@@ -26,8 +27,10 @@ class Seq2Seq:
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
         self.beam_width = beam_width
+
         self.learning_rate = learning_rate
         self.batch_size = batch_size
+        self.max_grad_norm = max_grad_norm
 
         self.residual = residual
         self.dropout = dropout
@@ -177,10 +180,16 @@ class Seq2Seq:
         # i.e. incorrect
         weights = tf.to_float(tf.not_equal(y[:, :-1], 1))
 
-        # Training and loss ops
+        # Training and loss ops,
+        # with gradient clipping (see [4])
         loss_op = seq2seq.sequence_loss(logits, self.y, weights=weights)
-        train_op = tf.train.AdamOptimizer(self.learning_rate).minimize(loss_op)
-        pred_idx = tf.to_int32(tf.argmax(logits, 2))
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        gradients, variables = zip(*optimizer.compute_gradients(loss_op))
+        gradients, _ = tf.clip_by_global_norm(gradients, self.max_grad_norm)
+        train_op = optimizer.apply_gradients(zip(gradients, variables))
+
+        # Compute accuracy
+        pred_idx = tf.to_int32(tf.argmax(logits, axis=2))
         accuracy_op = tf.reduce_mean(tf.cast(tf.equal(pred_idx, self.y), tf.float32), name='acc')
         return loss_op, train_op, accuracy_op
 
@@ -249,8 +258,8 @@ if __name__ == '__main__':
     #                 embed_dim=100, hidden_size=128, depth=1,
     #                 beam_width=10, residual=True, dropout=True)
     model = Seq2Seq(vocab_size=len(vocab),
-                    batch_size=batch_size, learning_rate=0.0001,
-                    embed_dim=256, hidden_size=1024, depth=2,
+                    batch_size=batch_size, learning_rate=0.0002,
+                    embed_dim=400, hidden_size=1024, depth=2,
                     beam_width=10, residual=True, dropout=True)
 
 
