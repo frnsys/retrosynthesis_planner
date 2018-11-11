@@ -18,15 +18,13 @@ def pad_arrays(arrs, pad_value=END):
 class Seq2Seq:
     def __init__(self, vocab_size,
                  batch_size=16, learning_rate=0.001, max_grad_norm=5.,
-                 embed_dim=100, beam_width=10,
-                 cell_type=rnn.LSTMCell, hidden_size=512, depth=2,
+                 cell_type=rnn.LSTMCell, hidden_size=512, depth=2, embed_dim=100,
                  residual=True, dropout=True):
         self.cell_type = cell_type
         self.hidden_size = hidden_size
         self.depth = depth
         self.vocab_size = vocab_size
         self.embed_dim = embed_dim
-        self.beam_width = beam_width
 
         self.learning_rate = learning_rate
         self.batch_size = batch_size
@@ -40,6 +38,7 @@ class Seq2Seq:
         self.X = tf.placeholder(tf.int32, shape=(None, None))
         self.y = tf.placeholder(tf.int32, shape=(None, None))
         self.sequence_length = tf.reduce_sum(tf.to_int32(tf.not_equal(self.X, END)), 1)
+        self.beam_width = tf.placeholder(tf.int32, shape=None)
 
         # Assemble the model graph
         encoder_outputs, encoder_final_state = self._make_encoder()
@@ -228,7 +227,8 @@ class Seq2Seq:
 
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
                 decoder=decoder, impute_finished=False)
-        return final_outputs
+        return final_outputs.predicted_ids
+
 
 if __name__ == '__main__':
     import os
@@ -268,8 +268,8 @@ if __name__ == '__main__':
     #                 beam_width=10, residual=True, dropout=True)
     model = Seq2Seq(vocab_size=len(vocab),
                     batch_size=batch_size, learning_rate=0.0001,
-                    embed_dim=1024, hidden_size=2048, depth=2,
-                    beam_width=10, residual=True, dropout=True)
+                    embed_dim=512, hidden_size=1024, depth=2,
+                    residual=True, dropout=True)
 
 
     sess = tf.Session()

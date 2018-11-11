@@ -16,7 +16,14 @@ lg.setLevel(RDLogger.CRITICAL)
 TOKEN_RE = re.compile(r'(\[[^\]]+]|[0-9]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|−|\+|\\\\\/|:|~|@|\?|>|\*|\$|\%[0–9]{2}|[0–9])')
 reagents = {}
 
+def tokenize(smiles):
+    """Tokenize a SMILES string"""
+    return TOKEN_RE.findall(smiles)
+
+
 def process(smarts):
+    """Process a SMARTS reaction string
+    into source and target tokens"""
     rxn = AllChem.ReactionFromSmarts(smarts)
     prods = rxn.GetProducts()
     if len(prods) > 1:
@@ -59,8 +66,8 @@ def process(smarts):
     if reagent_syms:
         source += '>' + '.'.join(reagent_syms)
     target = '.'.join(prod_smis)
-    source_toks = TOKEN_RE.findall(source)
-    target_toks = TOKEN_RE.findall(target)
+    source_toks = tokenize(source)
+    target_toks = tokenize(target)
     return source_toks, target_toks
 
 def clean(line): return line.strip().split()[0]
