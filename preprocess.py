@@ -16,6 +16,7 @@ lg.setLevel(RDLogger.CRITICAL)
 TOKEN_RE = re.compile(r'(\[[^\]]+]|[0-9]|Br?|Cl?|N|O|S|P|F|I|b|c|n|o|s|p|\(|\)|\.|=|#|−|\+|\\\\\/|:|~|@|\?|>|\*|\$|\%[0–9]{2}|[0–9])')
 reagents = {}
 
+
 def tokenize(smiles):
     """Tokenize a SMILES string"""
     return TOKEN_RE.findall(smiles)
@@ -81,24 +82,33 @@ if __name__ == '__main__':
         it = tqdm(map(process, map(clean, f)))
         for toks in it:
             if toks is None: continue
-            h = md5('_'.join(''.join(ts) for ts in toks).encode('utf8')).hexdigest()
+
+            # Hash the processed reaction to check for duplicates
+            h = md5('_'.join(''.join(ts) for ts in toks)\
+                    .encode('utf8')).hexdigest()
             if h in seen:
                 continue
             else:
                 seen.add(h)
+
             reactions.append(toks)
+
+            # Update vocab counts
             for ts in toks:
                 for t in ts:
                     vocab[t] += 1
+
             it.set_postfix(
                 reactions=len(reactions),
                 vocab=len(vocab),
                 reagents=len(reagents))
 
+    # Results
     print('Reagents:', len(reagents))
     print('Reactions:', len(reactions))
     print('Vocab size:', len(vocab))
 
+    # Save
     with open('data/reagents.dat', 'w') as f:
         lines = []
         for reagent, id in sorted(reagents.items(), key=lambda kv: kv[1]):
