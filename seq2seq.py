@@ -171,26 +171,36 @@ class Seq2Seq:
                 cell=decoder_cell, helper=helper,
                 initial_state=decoder_initial_state,
                 output_layer=out_proj)
+            max_len = tf.reduce_max(output_lengths)
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
-                decoder=decoder, impute_finished=True)
+                decoder=decoder, impute_finished=True, maximum_iterations=max_len)
             logits = final_outputs.rnn_output
+
+        # Set valid timesteps to 1 and padded steps to 0,
+        # so we only look at the actual sequence without the padding
+        mask = tf.sequence_mask(output_lengths, maxlen=max_len, dtype=tf.float32)
 
         # Prioritize examples that the model was wrong on,
         # by setting weight=1 to any example where the prediction was not 1,
         # i.e. incorrect
-        weights = tf.to_float(tf.not_equal(y[:, :-1], 1))
+        # weights = tf.to_float(tf.not_equal(y[:, :-1], 1))
 
         # Training and loss ops,
         # with gradient clipping (see [4])
-        loss_op = seq2seq.sequence_loss(logits, self.y, weights=weights)
+        loss_op = seq2seq.sequence_loss(logits, self.y, weights=mask)
         optimizer = tf.train.AdamOptimizer(self.learning_rate)
         gradients, variables = zip(*optimizer.compute_gradients(loss_op))
         gradients, _ = tf.clip_by_global_norm(gradients, self.max_grad_norm)
         train_op = optimizer.apply_gradients(zip(gradients, variables))
 
         # Compute accuracy
-        pred_idx = tf.to_int32(tf.argmax(logits, axis=2))
-        accuracy_op = tf.reduce_mean(tf.cast(tf.equal(pred_idx, self.y), tf.float32), name='acc')
+        # Use the mask from before so we only compare
+        # the relevant sequence lengths for each example
+        pred = tf.argmax(logits, axis=2, output_type=tf.int32)
+        pred = tf.boolean_mask(pred, mask)
+        true = tf.boolean_mask(self.y, mask)
+        accs = tf.cast(tf.equal(pred, true), tf.float32)
+        accuracy_op = tf.reduce_mean(accs, name='acc')
         return loss_op, train_op, accuracy_op
 
     def _make_predict(self, decoder_cell, decoder_initial_state):
