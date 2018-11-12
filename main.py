@@ -6,8 +6,11 @@ from preprocess import tokenize
 
 model = Seq2Seq.load('model')
 
-# TODO where to get a good list of these?
+# Load base compounds
 starting_mols = set()
+with open('data/base_compounds.smi', 'r') as f:
+    for smi in f:
+        starting_mols.add(smi.strip())
 
 
 def to_doc(mol):
