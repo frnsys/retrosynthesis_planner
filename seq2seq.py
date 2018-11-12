@@ -1,3 +1,5 @@
+import os
+import json
 import numpy as np
 import tensorflow as tf
 from tensorflow.contrib import rnn, seq2seq, layers
@@ -16,29 +18,48 @@ def pad_arrays(arrs, pad_value=END):
 
 
 class Seq2Seq:
-    def __init__(self, vocab_size,
-                 batch_size=16, learning_rate=0.001, max_grad_norm=5.,
+    def __init__(self, vocab,
+                 learning_rate=0.001, max_grad_norm=5.,
                  cell_type=rnn.LSTMCell, hidden_size=512, depth=2, embed_dim=100,
                  residual=True, dropout=True):
+        # Store config for easy saving
+        self._conf = {k: v for k, v in locals().items() if k not in ['self', 'vocab']}
+        self._conf['cell_type'] = cell_type.__name__
+
+        # Give vocab terms ids
+        self.vocab = vocab
+        self.vocab2id = {v: i for i, v in enumerate(vocab)}
+        self.id2vocab = {i: v for i, v in enumerate(vocab)}
+
         self.cell_type = cell_type
         self.hidden_size = hidden_size
         self.depth = depth
-        self.vocab_size = vocab_size
+        self.vocab_size = len(vocab)
         self.embed_dim = embed_dim
 
         self.learning_rate = learning_rate
-        self.batch_size = batch_size
         self.max_grad_norm = max_grad_norm
 
         self.residual = residual
         self.dropout = dropout
         if dropout:
-            self.keep_prob = tf.placeholder(tf.float32, shape=None)
+            self.keep_prob = tf.placeholder(tf.float32, shape=())
 
         self.X = tf.placeholder(tf.int32, shape=(None, None))
         self.y = tf.placeholder(tf.int32, shape=(None, None))
         self.sequence_length = tf.reduce_sum(tf.to_int32(tf.not_equal(self.X, END)), 1)
-        self.beam_width = tf.placeholder(tf.int32, shape=None)
+
+        # Dynamically set batch size based on input
+        self.batch_size = tf.shape(self.X)[0]
+
+        # TODO
+        # self.beam_width = tf.placeholder(tf.int32, shape=())
+        self.beam_width = 3
+
+        # Maximum steps to decode sequence
+        # Necessary so the decoder is not stuck decoding indefinitely.
+        # Suggested to use something like 500
+        self.max_decode_iter = tf.placeholder(tf.int32, shape=())
 
         # Assemble the model graph
         encoder_outputs, encoder_final_state = self._make_encoder()
@@ -53,6 +74,45 @@ class Seq2Seq:
         for v in tvars_after:
             if v not in tvars:
                 print(v)
+
+        self.sess = tf.Session()
+        self.saver = tf.train.Saver()
+
+        init = tf.global_variables_initializer()
+        self.sess.run(init)
+
+    @classmethod
+    def load(cls, path):
+        # Load model with config
+        with open(os.path.join(path, 'conf.json'), 'r') as f:
+            conf = json.load(f)
+        conf['cell_type'] = getattr(rnn, conf['cell_type'])
+
+        # Load vocab
+        with open('data/vocab.idx', 'r') as f:
+            conf['vocab'] = [line.strip() for line in f]
+
+        model = cls(**conf)
+
+        # Load trained params
+        ckpt_path = os.path.join(path, 'model.ckpt')
+        model.saver.restore(model.sess, ckpt_path)
+        return model
+
+    def save(self, path):
+        # Save config
+        with open(os.path.join(path, 'conf.json'), 'w') as f:
+            json.dump(self._conf, f)
+
+        # Save vocab
+        with open(os.path.join(path, 'vocab.idx'), 'w') as f:
+            f.write('\n'.join(self.vocab))
+
+        # Save trained params
+        if not os.path.exists(path):
+            os.makedirs(path)
+        ckpt_path = os.path.join(path, 'model.ckpt')
+        self.saver.save(self.sess, ckpt_path)
 
     def _make_cell(self, hidden_size=None):
         """Create a single RNN cell"""
@@ -134,7 +194,7 @@ class Seq2Seq:
 
             # Set last initial state to be AttentionWrapperState
             batch_size = self.batch_size
-            if beam_search: batch_size *= self.beam_width
+            if beam_search: batch_size = self.batch_size * self.beam_width
             decoder_initial_state[-1] = cells[-1].zero_state(
                 dtype=tf.float32, batch_size=batch_size)
 
@@ -226,12 +286,15 @@ class Seq2Seq:
             )
 
             final_outputs, final_state, final_sequence_lengths = seq2seq.dynamic_decode(
-                decoder=decoder, impute_finished=False)
-        return final_outputs.predicted_ids
+                decoder=decoder, impute_finished=False, maximum_iterations=self.max_decode_iter)
+
+        # Swap axes for an order that makes more sense (to me)
+        # such that we have [batch_size, beam_width, T], i.e.
+        # each row is a output sequence
+        return tf.transpose(final_outputs.predicted_ids, [0,2,1])
 
 
 if __name__ == '__main__':
-    import os
     import random
     from tqdm import tqdm, trange
 
@@ -241,9 +304,13 @@ if __name__ == '__main__':
         for line in tqdm(f, desc='vocab'):
             tok, _ = line.strip().split('\t')
             vocab.append(tok)
-    vocab2id = {v: i for i, v in enumerate(vocab)}
-    with open('data/vocab.idx', 'w') as f:
-        f.write('\n'.join(vocab))
+
+    print('Preparing model...')
+    batch_size = 32
+    model = Seq2Seq(vocab=vocab,
+                    learning_rate=0.0001,
+                    embed_dim=100, hidden_size=128, depth=1,
+                    residual=True, dropout=True)
 
     # Load reactions
     X, y = [], []
@@ -252,37 +319,13 @@ if __name__ == '__main__':
             source_toks, target_toks = line.strip().split('\t')
             source_toks = source_toks.split()
             target_toks = target_toks.split()
-            source_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in source_toks] + [END]
-            target_doc = [vocab2id['<S>']] + [vocab2id[tok] for tok in target_toks] + [END]
+            source_doc = [model.vocab2id['<S>']] + [model.vocab2id[tok] for tok in source_toks] + [END]
+            target_doc = [model.vocab2id['<S>']] + [model.vocab2id[tok] for tok in target_toks] + [END]
 
             # Since this is for retrosynthesis,
             # we want predict reactants (sources) from products (targets)
             X.append(target_doc)
             y.append(source_doc)
-
-    print('Preparing model...')
-    batch_size = 32
-    # model = Seq2Seq(vocab_size=len(vocab),
-    #                 batch_size=batch_size, learning_rate=0.0001,
-    #                 embed_dim=100, hidden_size=128, depth=1,
-    #                 beam_width=10, residual=True, dropout=True)
-    model = Seq2Seq(vocab_size=len(vocab),
-                    batch_size=batch_size, learning_rate=0.0001,
-                    embed_dim=512, hidden_size=1024, depth=2,
-                    residual=True, dropout=True)
-
-
-    sess = tf.Session()
-    init = tf.global_variables_initializer()
-    sess.run(init)
-
-    save_path = 'model'
-    ckpt_path = os.path.join(save_path, 'model.ckpt')
-    saver = tf.train.Saver()
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    else:
-        saver.restore(sess, ckpt_path)
 
     print('Training...')
     losses = []
@@ -310,7 +353,7 @@ if __name__ == '__main__':
             # Drop last batch if it is malformed
             if X_batch.shape[0] < batch_size: continue
 
-            _, err, acc = sess.run(
+            _, err, acc = model.sess.run(
                 [model.train_op, model.loss_op, model.acc_op],
                 feed_dict={
                     model.keep_prob: 0.5,
@@ -329,4 +372,5 @@ if __name__ == '__main__':
             loss=np.mean(losses[-10:]),
             acc=np.mean(accuracy[-10:]))
 
-        saver.save(sess, ckpt_path)
+        model.save('model')
+
