@@ -15,8 +15,10 @@ class Node:
     @property
     def value(self):
         """UCB1"""
+        if self.n_visits == 0:
+            return float('inf')
         return self.reward/self.n_visits + \
-            EXPLORE_PARAM*math.sqrt(math.ln(self.parent.n_visits)/self.n_visits)
+            EXPLORE_PARAM*math.sqrt(math.log(self.parent.n_visits)/self.n_visits)
 
     def best_child(self):
         return max(self.children, key=lambda n: n.value)
