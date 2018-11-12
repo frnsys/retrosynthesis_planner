@@ -12,6 +12,8 @@ with open('data/base_compounds.smi', 'r') as f:
     for smi in f:
         starting_mols.add(smi.strip())
 
+print('Base compounds:', len(starting_mols))
+
 
 def to_doc(mol):
     toks = tokenize(mol)
@@ -19,7 +21,8 @@ def to_doc(mol):
 
 
 def process_seq(seq):
-    smis = ''.join([model.id2vocab[id] for id in seq])
+    # Convert ids to tokens and drop START/END tokens
+    smis = ''.join([model.id2vocab[id] for id in seq if id not in [0, 1]])
     parts = smis.split('>')
     if len(parts) > 1:
         # There shouldn't be more than two parts
@@ -86,12 +89,9 @@ def rollout(node, max_depth=200):
             break
 
         # Select a random mol (that's not a starting mol)
-        mols = [mol for mol in node.state if mol not in starting_mols]
+        mols = [mol for mol in cur.state if mol not in starting_mols]
         mol = random.choice(mols)
-
-        # State for children will
-        # not include this mol
-        new_state = node.state - {mol}
+        print('INPUT:', mol)
 
         # Preprocess for model
         doc = to_doc(mol)
@@ -104,10 +104,16 @@ def rollout(node, max_depth=200):
         })
         seq = preds[0][0]
         reactants, reagents = process_seq(seq)
+        print('OUTPUT:', set(reactants))
 
         # TODO ignore reagents or what?
 
-        state = new_state | set(reactants)
+        state = cur.state | set(reactants)
+
+        # State for children will
+        # not include this mol
+        state = state - {mol}
+
         terminal = all(mol in starting_mols for mol in state)
         cur = Node(state=state, is_terminal=terminal, parent=cur)
 
@@ -120,7 +126,8 @@ def rollout(node, max_depth=200):
     return 1.
 
 
-target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
+# target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
+target_mol = 'CC(=O)NC1=CC=C(O)C=C1'
 root = Node(state={target_mol})
 
 path = mcts(root, expansion, rollout, iterations=2000, max_depth=200)
