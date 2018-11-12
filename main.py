@@ -1,29 +1,10 @@
-import os
 import random
-import tensorflow as tf
 from seq2seq import Seq2Seq, END, pad_arrays
 from mcts import Node, mcts
 from preprocess import tokenize
 
 
-# Load vocab
-vocab2id = {}
-with open('data/vocab.idx', 'r') as f:
-    for i, line in enumerate(f):
-        term = line.strip()
-        vocab2id[term] = i
-
-# TODO load actual model
-model = Seq2Seq()
-
-sess = tf.Session()
-init = tf.global_variables_initializer()
-sess.run(init)
-
-save_path = 'model'
-ckpt_path = os.path.join(save_path, 'model.ckpt')
-saver = tf.train.Saver()
-saver.restore(sess, ckpt_path)
+model = Seq2Seq.load('model')
 
 # TODO where to get a good list of these?
 starting_mols = set()
@@ -31,7 +12,22 @@ starting_mols = set()
 
 def to_doc(mol):
     toks = tokenize(mol)
-    return [vocab2id['<S>']] + [vocab2id[tok] for tok in toks] + [END]
+    return [model.vocab2id['<S>']] + [model.vocab2id[tok] for tok in toks] + [END]
+
+
+def process_seq(seq):
+    smis = ''.join([model.id2vocab[id] for id in seq])
+    parts = smis.split('>')
+    if len(parts) > 1:
+        # There shouldn't be more than two parts
+        reactants, reagents = parts[0], parts[1]
+    else:
+        reactants = parts[0]
+        reagents = []
+    reactants = reactants.split('.')
+
+    return reactants, reagents
+
 
 
 def expansion(node):
@@ -54,28 +50,28 @@ def expansion(node):
 
     # Predict reactants
     mols_ordered, docs = zip(*mol_docs)
-    preds = sess.run(model.pred_op, feed_dict={
+    preds = model.sess.run(model.pred_op, feed_dict={
         model.keep_prob: 1.,
         model.X: pad_arrays(docs),
-        model.beam_width: 10
+        model.max_decode_iter: 500,
+        # model.beam_width: 10
     })
 
     # Generate children for reactants
     children = []
-    for mol, ps in zip(mols_ordered, preds):
+    for mol, seqs in zip(mols_ordered, preds):
         # State for children will
         # not include this mol
         new_state = mols - {mol}
 
-        for p in ps:
-            # TODO process preds
-            # convert to SMILES
+        for s in seqs:
+            reactants, reagents = process_seq(s)
             # TODO should we discard reagents?
             # or store them on edges?
-            smis = p
-            state = new_state | set(smis)
+
+            state = new_state | set(reactants)
             terminal = all(mol in starting_mols for mol in state)
-            child = Node(state=state, is_terminal=terminal)
+            child = Node(state=state, is_terminal=terminal, parent=node)
             children.append(child)
     return children
 
@@ -87,7 +83,7 @@ def rollout(node, max_depth=200):
             break
 
         # Select a random mol (that's not a starting mol)
-        mols = {mol for mol in node.state if mol not in starting_mols}
+        mols = [mol for mol in node.state if mol not in starting_mols]
         mol = random.choice(mols)
 
         # State for children will
@@ -97,29 +93,31 @@ def rollout(node, max_depth=200):
         # Preprocess for model
         doc = to_doc(mol)
 
-        preds = sess.run(model.pred_op, feed_dict={
+        preds = model.sess.run(model.pred_op, feed_dict={
             model.keep_prob: 1.,
             model.X: [doc],
-            model.beam_width: 1
+            model.max_decode_iter: 500,
+            # model.beam_width: 1
         })
-        pred = preds[0]
+        seq = preds[0][0]
+        reactants, reagents = process_seq(seq)
 
-        # TODO properly extract reactant SMIs
         # TODO ignore reagents or what?
-        smis = pred
-        state = new_state | set(smis)
+
+        state = new_state | set(reactants)
         terminal = all(mol in starting_mols for mol in state)
-        cur = Node(state=state, is_terminal=terminal)
+        cur = Node(state=state, is_terminal=terminal, parent=cur)
 
     # Max depth exceeded
     else:
+        print('Rollout reached max depth')
         return 0.
 
     # TODO look up rewards from paper
     return 1.
 
 
-target_mol = 'FOO'
+target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
 root = Node(state={target_mol})
 
 path = mcts(root, expansion, rollout, iterations=2000, max_depth=200)
