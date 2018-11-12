@@ -54,7 +54,7 @@ class Seq2Seq:
 
         # TODO
         # self.beam_width = tf.placeholder(tf.int32, shape=())
-        self.beam_width = 3
+        self.beam_width = 1
 
         # Maximum steps to decode sequence
         # Necessary so the decoder is not stuck decoding indefinitely.
@@ -307,10 +307,13 @@ if __name__ == '__main__':
 
     print('Preparing model...')
     batch_size = 32
-    model = Seq2Seq(vocab=vocab,
-                    learning_rate=0.0001,
-                    embed_dim=100, hidden_size=128, depth=1,
-                    residual=True, dropout=True)
+    try:
+        model = Seq2Seq.load('model')
+    except FileNotFoundError:
+        model = Seq2Seq(vocab=vocab,
+                        learning_rate=0.0001,
+                        embed_dim=512, hidden_size=1024, depth=2,
+                        residual=True, dropout=True)
 
     # Load reactions
     X, y = [], []
