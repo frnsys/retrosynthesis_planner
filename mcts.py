@@ -1,4 +1,6 @@
 import math
+from tqdm import tqdm
+from time import time
 
 EXPLORE_PARAM = 2
 
@@ -35,7 +37,7 @@ def mcts(root, expansion_policy, rollout_policy, iterations=2000, max_depth=200)
     root.children = expansion_policy(root)
 
     # MCTS
-    for _ in range(iterations):
+    for _ in tqdm(range(iterations)):
         cur_node = root
 
         # Selection
@@ -52,11 +54,15 @@ def mcts(root, expansion_policy, rollout_policy, iterations=2000, max_depth=200)
                 break
 
             # Expansion
+            s = time()
             cur_node.children = expansion_policy(cur_node)
+            print('Expansion took:', time() - s)
             cur_node = cur_node.best_child()
 
         # Rollout
+        s = time()
         reward = rollout_policy(cur_node, max_depth=max_depth)
+        print('Rollout took:', time() - s)
 
         # Update
         cur_node.reward += reward
