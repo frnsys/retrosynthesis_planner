@@ -23,3 +23,6 @@ with open('data/emolecules.smi', 'r') as f:
             smiles.add(smi)
 
 print('Compounds:', len(smiles))
+
+with open('data/base_compounds.smi', 'w') as f:
+    f.write('\n'.join(smiles))
