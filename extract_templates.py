@@ -6,9 +6,13 @@ Modified version of:
 import re
 from tqdm import tqdm
 from rdkit.Chem import AllChem
-from rdkit import Chem
+from rdkit import Chem, RDLogger
 from itertools import chain
 from multiprocessing import Pool
+
+# Silence logs
+lg = RDLogger.logger()
+lg.setLevel(RDLogger.CRITICAL)
 
 def canonicalize_template(template):
     '''This function takes one-half of a template SMARTS string
@@ -204,6 +208,14 @@ def extract(smarts):
     reactants = rxn.GetReactants()
     agents = rxn.GetAgents()
 
+    # Only consider single product reactions
+    if len(products) > 1:
+        return
+
+    product = Chem.Mol(products[0])
+    [a.ClearProp('molAtomMapNumber') for a in product.GetAtoms()]
+    product_smi = Chem.MolToSmiles(product)
+
     # Sanitize and canonicalize
     for mols in [products, reactants, agents]:
         for mol in mols:
@@ -223,8 +235,6 @@ def extract(smarts):
     # THIS IS TOO MUCH
     r_atoms = dict(chain(*[[(a.GetProp(ATOM_MAP_PROP), a) for a in m.GetAtoms() if a.HasProp(ATOM_MAP_PROP)] for m in reactants]))
     p_atoms = dict(chain(*[[(a.GetProp(ATOM_MAP_PROP), a) for a in m.GetAtoms() if a.HasProp(ATOM_MAP_PROP)] for m in products]))
-    # rtest = list(chain(*[[(a.GetProp(ATOM_MAP_PROP), a) for a in m.GetAtoms() if a.HasProp(ATOM_MAP_PROP)] for m in reactants]))
-    # ptest = list(chain(*[[(a.GetProp(ATOM_MAP_PROP), a) for a in m.GetAtoms() if a.HasProp(ATOM_MAP_PROP)] for m in products]))
 
     # Should consist of the same tags and atoms
     # TODO looks like they may not necessarily have the same tags?
@@ -246,19 +256,28 @@ def extract(smarts):
     product_frags, _ = fragmentize(products, changed_atoms, radius=1, include_unmapped=True, include_ids=reactant_ids)
 
     transform = '{}>>{}'.format(reactant_frags, product_frags)
+
+    # Validate
     rxn = AllChem.ReactionFromSmarts(transform)
+    _, n_errs = rxn.Validate(silent=True)
+    if n_errs > 0:
+        return
 
     rxn_canonical = canonicalize_transform(transform)
     retro_canonical = convert_to_retro(rxn_canonical)
-    return retro_canonical
+    return retro_canonical, product_smi
 
 def clean(line): return line.strip().split()[0]
 
 transforms = []
 with open('data/reactions.rsmi', 'r') as f:
     with Pool() as p:
-        for rxn in tqdm(p.imap(extract, map(clean, f))):
-            if rxn is None: continue
-            transforms.append(rxn)
+        for res in tqdm(p.imap(extract, map(clean, f))):
+            if res is None: continue
+            rxn, product = res
+            transforms.append((rxn, product))
+
+with open('data/templates.dat', 'w') as f:
+    f.write('\n'.join(['\t'.join(rxn_prod) for rxn_prod in transforms]))
 
 import ipdb; ipdb.set_trace()
