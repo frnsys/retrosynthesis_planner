@@ -9,6 +9,7 @@ from rdkit.Chem import AllChem
 from rdkit import Chem, RDLogger
 from itertools import chain
 from multiprocessing import Pool
+from collections import defaultdict
 
 # Silence logs
 lg = RDLogger.logger()
@@ -280,4 +281,17 @@ with open('data/reactions.rsmi', 'r') as f:
 with open('data/templates.dat', 'w') as f:
     f.write('\n'.join(['\t'.join(rxn_prod) for rxn_prod in transforms]))
 
-import ipdb; ipdb.set_trace()
+# Generate rules for MCTS
+templates = defaultdict(int)
+for rule, _ in transforms:
+    templates[rule] += 1
+
+expansion = [rule for rule, count in templates.items() if count >= 3]
+print('Expansion rules:', len(expansion))
+with open('data/expansion.dat', 'w') as f:
+    f.write('\n'.join(expansion))
+
+rollout = [rule for rule, count in templates.items() if count >= 15]
+print('Rollout rules:', len(rollout))
+with open('data/rollout.dat', 'w') as f:
+    f.write('\n'.join(rollout))
