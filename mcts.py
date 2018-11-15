@@ -6,12 +6,13 @@ EXPLORE_PARAM = 2
 
 
 class Node:
-    def __init__(self, state, parent=None, is_terminal=False):
+    def __init__(self, state, parent=None, action=None, is_terminal=False):
         self.state = state
         self.children = []
         self.parent = parent
         self.n_visits = 0
         self.reward = 0
+        self.action = action
         self.is_terminal = is_terminal
 
     @property

@@ -86,7 +86,7 @@ def expansion(node):
 
             state = new_state | set(reactants)
             terminal = all(mol in starting_mols for mol in state)
-            child = Node(state=state, is_terminal=terminal, parent=node)
+            child = Node(state=state, is_terminal=terminal, parent=node, action=rule)
             children.append(child)
     return children
 
@@ -118,7 +118,7 @@ def rollout(node, max_depth=200):
         state = state - {mol}
 
         terminal = all(mol in starting_mols for mol in state)
-        cur = Node(state=state, is_terminal=terminal, parent=cur)
+        cur = Node(state=state, is_terminal=terminal, parent=cur, action=rule)
 
     # Max depth exceeded
     else:
@@ -137,9 +137,10 @@ def rollout(node, max_depth=200):
     return 1.
 
 
-if __name__ == '__main__':
-    # target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
-    target_mol = 'CC(=O)NC1=CC=C(O)C=C1'
+def plan(target_mol):
+    """Generate a synthesis plan for a target molecule (in SMILES form).
+    If a path is found, returns a list of (action, state) tuples.
+    If a path is not found, returns None."""
     root = Node(state={target_mol})
 
     path = mcts(root, expansion, rollout, iterations=2000, max_depth=200)
@@ -147,5 +148,13 @@ if __name__ == '__main__':
         print('No synthesis path found. Try increasing `iterations` or `max_depth`.')
     else:
         print('Path found:')
-        print(path)
-        import ipdb; ipdb.set_trace()
+        path = [(n.action, n.state) for n in path[1:]]
+    return path
+
+
+if __name__ == '__main__':
+    # target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
+    target_mol = 'CC(=O)NC1=CC=C(O)C=C1'
+    root = Node(state={target_mol})
+    path = plan(target_mol)
+    import ipdb; ipdb.set_trace()
