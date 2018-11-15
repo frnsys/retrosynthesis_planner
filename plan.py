@@ -35,7 +35,7 @@ saver.restore(sess, 'model/model.ckpt')
 
 
 def transform(mol, rule):
-    # Apply rule
+    """Apply transformation rule to a molecule to get reactants"""
     rxn = AllChem.ReactionFromSmarts(rule)
     results = rxn.RunReactants([mol])
 
@@ -43,6 +43,7 @@ def transform(mol, rule):
     results = results[0]
     reactants = [Chem.MolToSmiles(smi) for smi in results]
     return reactants
+
 
 def expansion(node):
     """Try expanding each molecule in the current state
@@ -122,20 +123,29 @@ def rollout(node, max_depth=200):
     # Max depth exceeded
     else:
         print('Rollout reached max depth')
-        return 0.
 
-    # TODO look up rewards from paper
+        # Partial reward if some starting molecules are found
+        reward = sum(1 for mol in cur.state if mol in starting_mols)/len(cur.state)
+
+        # Reward of -1 if no starting molecules are found
+        if reward == 0:
+            return -1.
+
+        return reward
+
+    # Reward of 1 if solution is found
     return 1.
 
 
-# target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
-target_mol = 'CC(=O)NC1=CC=C(O)C=C1'
-root = Node(state={target_mol})
+if __name__ == '__main__':
+    # target_mol = '[H][C@@]12OC3=C(O)C=CC4=C3[C@@]11CCN(C)[C@]([H])(C4)[C@]1([H])C=C[C@@H]2O'
+    target_mol = 'CC(=O)NC1=CC=C(O)C=C1'
+    root = Node(state={target_mol})
 
-path = mcts(root, expansion, rollout, iterations=2000, max_depth=200)
-if path is None:
-    print('No synthesis path found. Try increasing `iterations` or `max_depth`.')
-else:
-    print('Path found:')
-    print(path)
-    import ipdb; ipdb.set_trace()
+    path = mcts(root, expansion, rollout, iterations=2000, max_depth=200)
+    if path is None:
+        print('No synthesis path found. Try increasing `iterations` or `max_depth`.')
+    else:
+        print('Path found:')
+        print(path)
+        import ipdb; ipdb.set_trace()
