@@ -1,5 +1,5 @@
 """
-Preprocess reaction data as described in [2].
+Preprocess reaction data as described in the paper.
 """
 
 import re

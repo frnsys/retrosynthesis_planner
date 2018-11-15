@@ -1,4 +1,9 @@
 """
+Experiment with creation a reaction graph
+(i.e. compounds are nodes and edges are transformations)
+
+(Too resource intenstive)
+
 sudo apt install -y libxml2-dev zlib1g-dev
 """
 import json
