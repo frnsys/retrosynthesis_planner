@@ -7,9 +7,7 @@
 5. Coley, Connor W., et al. "Prediction of organic reaction outcomes using machine learning." ACS central science 3.5 (2017): 434-443.
 6. Plehiers, Pieter P., et al. "Automated reaction database and reaction network analysis: extraction of reaction templates using cheminformatics." Journal of cheminformatics 10.1 (2018): 11.
 
-# TODO
+# Data Sources
 
-- Rollout policy network should be the same as the expansion policy network, but with a lower beam width
-- Also can train a value network
-    - Generate graph of reactions
-    - Given a molecule A and a molecule B (fingerprints), classify if B is a parent in a path to A
+- Lowe, Daniel (2017): [Chemical reactions from US patents (1976-Sep2016)](https://figshare.com/articles/Chemical_reactions_from_US_patents_1976-Sep2016_/5104873). figshare. Fileset.
+- Compound building blocks are from [eMolecules](https://www.emolecules.com/)
