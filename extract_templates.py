@@ -286,7 +286,7 @@ templates = defaultdict(int)
 for rule, _ in transforms:
     templates[rule] += 1
 
-expansion = [rule for rule, count in templates.items() if count >= 3]
+expansion = [rule for rule, count in templates.items() if count >= 4]
 print('Expansion rules:', len(expansion))
 with open('data/expansion.dat', 'w') as f:
     f.write('\n'.join(expansion))
