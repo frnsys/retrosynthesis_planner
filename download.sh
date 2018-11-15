@@ -1,4 +1,4 @@
-cd data
+mkdir data; cd data
 
 # USPTO data for reactions
 wget https://ndownloader.figshare.com/articles/5104873/versions/1 -O uspto_reactions.zip

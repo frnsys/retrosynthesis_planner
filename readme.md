@@ -1,3 +1,10 @@
+# Usage
+
+1. Download data with `download.sh`
+2. Process data with:
+    - `extract_templates.py`
+    - `process_base.py`
+3. Train policy neural networks with `policies.py`
 
 # References
 1. Segler, Marwin HS, Mike Preuss, and Mark P. Waller. "Planning chemical syntheses with deep neural networks and symbolic AI." Nature 555.7698 (2018): 604.
